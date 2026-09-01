@@ -463,10 +463,14 @@ export function buildPaymentConfirmationMessage(
   method: PaymentMethodRow | null,
   opts: { deliveryEta?: string | null; orderNumber?: string | null },
 ): string {
-  const details =
+  const details = [
     method && method.detail_type !== "none" && method.detail_value
       ? `${method.name}: ${method.detail_value}`
-      : method?.name ?? "";
+      : method?.name ?? "",
+    method?.instructions?.trim() ?? "",
+  ]
+    .filter(Boolean)
+    .join(". ");
   const eta = (opts.deliveryEta ?? "").trim() || "المدة المتوقعة للتوصيل";
   const orderNumber = (opts.orderNumber ?? "").trim();
 
@@ -475,7 +479,7 @@ export function buildPaymentConfirmationMessage(
     template && template.length > 0
       ? template
       : method?.behavior === "manual"
-        ? "تمام يا فندم، سجلنا بيانات طلبك. [تفاصيل الدفع]. من فضلك أبعت لينا لقطة شاشة للتحويل عشان نستكمل الطلب."
+        ? "تم تسجيل طلبك يا فندم. [تفاصيل الدفع]."
         : "تم تأكيد الاوردر يا فندم. وهيوصل لحضرتك في خلال [مدة التوصيل].";
 
   return base

@@ -3453,13 +3453,13 @@ export const Route = createFileRoute("/api/chat-ai")({
                 orderNumber = newOrderNumber();
                 continue;
               }
-              console.error("[chat-ai] create_order insert failed", msg);
+              console.error("[chat-ai] create_order insert failed", { code, message: msg });
               return {
                 result: {
                   ok: false,
                   error: "db_insert_failed",
                   message:
-                    "The order could not be saved. The customer's existing approval remains valid. Do NOT ask the customer to confirm again, do NOT ask them to repeat any phrase, and do NOT mention a system/tool/error. Tell them naturally that you already have their approval and details and will review the registration now. Do NOT provide any order number.",
+                    "The order was NOT created and does not exist in the store. The customer's existing approval remains valid. Do NOT ask the customer to confirm again or repeat any phrase. Say plainly and naturally that registration did not complete right now. Never say or imply that the order was saved, confirmed, prepared, is being processed, or will be reviewed as though it exists. Do NOT provide any order number.",
                 },
                 createdOrderNumber: null,
               };
@@ -4063,8 +4063,8 @@ export const Route = createFileRoute("/api/chat-ai")({
             return base + Math.floor(Math.random() * 400);
           };
 
-          // At most one "you claimed an addition without registering it"
-          // correction per turn.
+          // At most two corrections when the model claims that a first order or
+          // an addition was registered without a successful create_order call.
           let additionClaimCorrections = 0;
 
           let gatewayRetries = 0;
@@ -4188,10 +4188,8 @@ export const Route = createFileRoute("/api/chat-ai")({
             if (toolCalls.length === 0) {
               reply = sanitizeAssistantReply(choiceMsg?.content?.toString?.() ?? "");
 
-              // ADDITION CLAIM GUARD — a reply may never present an addition on
-              // an existing order as done or payable unless create_order
-              // actually registered it (which is what raises the notification,
-              // the "تأكيد الدفع" button and the manual-payment stop).
+              // ORDER CLAIM GUARD — a reply may never present a first order or
+              // an addition as registered unless create_order actually wrote it.
               const {
                 shouldJudgeAdditionClaim,
                 buildAdditionClaimJudgeMessages,
@@ -4233,7 +4231,9 @@ export const Route = createFileRoute("/api/chat-ai")({
                     );
                   }
                 } catch {
-                  // A judge failure must never block the customer's turn.
+                  // A suspicious success claim is fail-closed: if semantic
+                  // verification is unavailable, never let the claim through.
+                  claimsAddition = true;
                 }
                 if (claimsAddition) {
                   additionClaimCorrections++;
@@ -4512,6 +4512,56 @@ export const Route = createFileRoute("/api/chat-ai")({
             }
 
 
+          }
+
+          // The last-resort regenerator and later repair passes sit outside the
+          // tool loop, so enforce the same order-success invariant once more at
+          // the final reply boundary. Suspicious text is never allowed through
+          // without a real order number from a successful database transaction.
+          if (reply && !createdOrderNumber) {
+            const {
+              shouldJudgeAdditionClaim,
+              buildAdditionClaimJudgeMessages,
+              parseAdditionClaimVerdict,
+            } = await import("@/lib/order-addition-claim-guard");
+            if (
+              shouldJudgeAdditionClaim({
+                hasExistingOrder: Boolean(latestConversationOrder),
+                orderRegisteredThisTurn: false,
+                correctionsIssued: 0,
+                reply,
+              })
+            ) {
+              let safe = false;
+              try {
+                const guardRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+                  method: "POST",
+                  signal: AbortSignal.timeout(15_000),
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Lovable-API-Key": lovableApiKey,
+                  },
+                  body: JSON.stringify({
+                    model: "google/gemini-2.5-flash",
+                    messages: buildAdditionClaimJudgeMessages(reply, String(message ?? "")),
+                  }),
+                });
+                if (guardRes.ok) {
+                  const guardJson = await guardRes.json();
+                  safe = !parseAdditionClaimVerdict(
+                    guardJson?.choices?.[0]?.message?.content?.toString?.() ?? "",
+                  );
+                }
+              } catch {
+                safe = false;
+              }
+              if (!safe) {
+                console.error("[chat-ai] blocked unverified order-success claim at egress");
+                reply = orderSaveFailed
+                  ? "معلش يا فندم، تسجيل الطلب ماكملش دلوقتي. موافقتك وكل بياناتك عندي ومش محتاج تبعتهم تاني."
+                  : "لسه الطلب ما اتسجلش يا فندم. هكمل معاك من آخر خطوة ناقصة من غير ما أعيد عليك البيانات.";
+              }
+            }
           }
 
           // ---------------------------------------------------------------
