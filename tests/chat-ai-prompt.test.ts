@@ -68,6 +68,8 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toMatch(/Never mention that you are AI/);
     expect(prompt).toContain("that approval remains valid");
     expect(prompt).toContain('repeat "تمام"');
+    expect(prompt).toContain("ORDER IS REGISTERED immediately");
+    expect(prompt).toContain("Never ask the customer to send a transfer screenshot");
   });
 
   it("asks for clarification without forcing هادي onto هودي or suggesting alternatives", () => {
