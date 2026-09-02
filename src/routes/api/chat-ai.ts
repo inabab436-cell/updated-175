@@ -4514,56 +4514,6 @@ export const Route = createFileRoute("/api/chat-ai")({
 
           }
 
-          // The last-resort regenerator and later repair passes sit outside the
-          // tool loop, so enforce the same order-success invariant once more at
-          // the final reply boundary. Suspicious text is never allowed through
-          // without a real order number from a successful database transaction.
-          if (reply && !createdOrderNumber) {
-            const {
-              shouldJudgeAdditionClaim,
-              buildAdditionClaimJudgeMessages,
-              parseAdditionClaimVerdict,
-            } = await import("@/lib/order-addition-claim-guard");
-            if (
-              shouldJudgeAdditionClaim({
-                hasExistingOrder: Boolean(latestConversationOrder),
-                orderRegisteredThisTurn: false,
-                correctionsIssued: 0,
-                reply,
-              })
-            ) {
-              let safe = false;
-              try {
-                const guardRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-                  method: "POST",
-                  signal: AbortSignal.timeout(15_000),
-                  headers: {
-                    "Content-Type": "application/json",
-                    "Lovable-API-Key": lovableApiKey,
-                  },
-                  body: JSON.stringify({
-                    model: "google/gemini-2.5-flash",
-                    messages: buildAdditionClaimJudgeMessages(reply, String(message ?? "")),
-                  }),
-                });
-                if (guardRes.ok) {
-                  const guardJson = await guardRes.json();
-                  safe = !parseAdditionClaimVerdict(
-                    guardJson?.choices?.[0]?.message?.content?.toString?.() ?? "",
-                  );
-                }
-              } catch {
-                safe = false;
-              }
-              if (!safe) {
-                console.error("[chat-ai] blocked unverified order-success claim at egress");
-                reply = orderSaveFailed
-                  ? "معلش يا فندم، تسجيل الطلب ماكملش دلوقتي. موافقتك وكل بياناتك عندي ومش محتاج تبعتهم تاني."
-                  : "لسه الطلب ما اتسجلش يا فندم. هكمل معاك من آخر خطوة ناقصة من غير ما أعيد عليك البيانات.";
-              }
-            }
-          }
-
           // ---------------------------------------------------------------
           // PHOTO-PROMISE GUARD
           // ---------------------------------------------------------------
@@ -4613,6 +4563,56 @@ export const Route = createFileRoute("/api/chat-ai")({
           }
 
 
+
+          // The regenerator and every later repair pass sit outside the tool
+          // loop, so enforce the same invariant at the true final boundary.
+          // Suspicious text is fail-closed unless a real order number came from
+          // a successful database transaction in this turn.
+          if (reply && !createdOrderNumber) {
+            const {
+              shouldJudgeAdditionClaim,
+              buildAdditionClaimJudgeMessages,
+              parseAdditionClaimVerdict,
+            } = await import("@/lib/order-addition-claim-guard");
+            if (
+              shouldJudgeAdditionClaim({
+                hasExistingOrder: Boolean(latestConversationOrder),
+                orderRegisteredThisTurn: false,
+                correctionsIssued: 0,
+                reply,
+              })
+            ) {
+              let safe = false;
+              try {
+                const guardRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+                  method: "POST",
+                  signal: AbortSignal.timeout(15_000),
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Lovable-API-Key": lovableApiKey,
+                  },
+                  body: JSON.stringify({
+                    model: "google/gemini-2.5-flash",
+                    messages: buildAdditionClaimJudgeMessages(reply, String(message ?? "")),
+                  }),
+                });
+                if (guardRes.ok) {
+                  const guardJson = await guardRes.json();
+                  safe = !parseAdditionClaimVerdict(
+                    guardJson?.choices?.[0]?.message?.content?.toString?.() ?? "",
+                  );
+                }
+              } catch {
+                safe = false;
+              }
+              if (!safe) {
+                console.error("[chat-ai] blocked unverified order-success claim at egress");
+                reply = orderSaveFailed
+                  ? "معلش يا فندم، تسجيل الطلب ماكملش دلوقتي. موافقتك وكل بياناتك عندي ومش محتاج تبعتهم تاني."
+                  : "لسه الطلب ما اتسجلش يا فندم. هكمل معاك من آخر خطوة ناقصة من غير ما أعيد عليك البيانات.";
+              }
+            }
+          }
 
           // ---------------------------------------------------------------
           // MISSING-INFORMATION TRUTH GUARD

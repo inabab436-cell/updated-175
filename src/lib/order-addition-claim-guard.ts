@@ -46,7 +46,7 @@ export function hasPotentialOrderSuccessClaim(reply: string): boolean {
   ) {
     return false;
   }
-  return /(?:الأوردر|الاوردر|الطلب|order).{0,80}(?:ات?سجل|تسجل|سجلنا|اتأكد|تأكد|مؤكد|متأكد|تم|جاهز|خلص|saved|registered|confirmed|created|placed|ready|complete)|(?:ات?سجل|سجلنا|اتأكد|مؤكد|متأكد|جهزنا|خلصنا|saved|registered|confirmed|created|placed).{0,80}(?:الأوردر|الاوردر|الطلب|order)/iu.test(
+  return /(?:الأوردر|الاوردر|الطلب|order).{0,80}(?:ات?سجل|تسجل|سجلنا|اتأكد|تأكد|مؤكد|متأكد|تم|جاهز|خلص|saved|registered|confirmed|created|placed|ready|complete)|(?:ات?سجل|سجلنا|اتأكد|مؤكد|متأكد|جهزنا|خلصنا|saved|registered|confirmed|created|placed).{0,80}(?:الأوردر|الاوردر|الطلب|order)|(?:ضفت|اضفت|أضفت|زودت|زدت|added|updated).{0,80}(?:قطعه|قطعة|منتج|كميه|كمية|piece|product|quantity)/iu.test(
     text,
   );
 }
